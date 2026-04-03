@@ -1,10 +1,6 @@
 import pandas as pd
 import os
 
-# ==============================
-# STEP 1: Load Dataset
-# ==============================
-
 base_path = os.path.dirname(__file__)
 
 file_path = os.path.join(
@@ -18,34 +14,26 @@ print(df.head())
 print("\nColumns:", df.columns)
 print("\nShape:", df.shape)
 
-# ==============================
-# STEP 2: Set Target Column
-# ==============================
-
 target_column = "CLASS_LABEL"
 
 print("\nTarget exists:", target_column in df.columns)
 
-# ==============================
-# STEP 3: Prepare Data
-# ==============================
-
-# Keep only numeric columns
 df_numeric = df.select_dtypes(include=['number'])
 
-# Ensure target is included
 if target_column not in df_numeric.columns:
     df_numeric[target_column] = df[target_column]
 
 X = df_numeric.drop(target_column, axis=1)
 y = df_numeric[target_column]
 
+if "id" in X.columns:
+    X = X.drop("id", axis=1)
+
 print("\nX shape:", X.shape)
 print("y shape:", y.shape)
 
-# ==============================
-# STEP 4: Train-Test Split
-# ==============================
+print("\nTop correlations with target:\n")
+print(df_numeric.corr()["CLASS_LABEL"].sort_values(ascending=False))
 
 from sklearn.model_selection import train_test_split
 
@@ -56,20 +44,12 @@ X_train, X_test, y_train, y_test = train_test_split(
 print("\nTrain size:", X_train.shape)
 print("Test size:", X_test.shape)
 
-# ==============================
-# STEP 5: Feature Scaling
-# ==============================
-
 from sklearn.preprocessing import StandardScaler
 
 scaler = StandardScaler()
 
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
-
-# ==============================
-# STEP 6: Train Models
-# ==============================
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
@@ -78,24 +58,17 @@ from sklearn.metrics import accuracy_score, classification_report
 
 models = {}
 
-# Logistic Regression
 lr = LogisticRegression(max_iter=2000)
 lr.fit(X_train_scaled, y_train)
 models["Logistic Regression"] = (lr, X_test_scaled)
 
-# Random Forest
 rf = RandomForestClassifier(n_estimators=100)
 rf.fit(X_train, y_train)
 models["Random Forest"] = (rf, X_test)
 
-# XGBoost
-xgb = XGBClassifier(use_label_encoder=False, eval_metric='logloss')
+xgb = XGBClassifier(eval_metric='logloss')
 xgb.fit(X_train, y_train)
 models["XGBoost"] = (xgb, X_test)
-
-# ==============================
-# STEP 7: Model Comparison
-# ==============================
 
 print("\n📊 Model Comparison:\n")
 
@@ -107,7 +80,6 @@ for name, (model, X_eval) in models.items():
     accuracies[name] = acc
     print(f"{name}: {acc:.4f}")
 
-# Select best model
 best_model_name = max(accuracies, key=accuracies.get)
 best_model, best_X = models[best_model_name]
 
@@ -117,10 +89,6 @@ y_pred = best_model.predict(best_X)
 
 print("\n🔍 Classification Report:\n")
 print(classification_report(y_test, y_pred))
-
-# ==============================
-# STEP 8: Feature Importance (IMPROVED)
-# ==============================
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -147,24 +115,18 @@ plt.tight_layout()
 plt.savefig("feature_importance_clean.png")
 plt.close()
 
-# ==============================
-# STEP 9: SHAP (Explainability)
-# ==============================
-
 import shap
 
 print("\nGenerating SHAP explanations...")
 
 X_sample = X_test.sample(min(1000, len(X_test)))
 
-explainer = shap.Explainer(xgb)
+explainer = shap.TreeExplainer(xgb)
 shap_values = explainer(X_sample)
 
-shap.summary_plot(shap_values, X_sample)
-
-# ==============================
-# STEP 10: Confusion Matrix
-# ==============================
+shap.summary_plot(shap_values, X_sample, show=False)
+plt.savefig("shap_summary.png")
+plt.close()
 
 from sklearn.metrics import confusion_matrix
 
@@ -176,10 +138,6 @@ sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
 plt.title("Confusion Matrix")
 plt.savefig("confusion_matrix.png")
 plt.close()
-
-# ==============================
-# STEP 11: ROC Curve
-# ==============================
 
 from sklearn.metrics import roc_curve, auc
 
@@ -201,12 +159,13 @@ plt.legend()
 plt.savefig("roc_curve.png")
 plt.close()
 
-# ==============================
-# STEP 12: Model Comparison Graph
-# ==============================
+sorted_models = sorted(accuracies.items(), key=lambda x: x[1], reverse=True)
+
+names = [x[0] for x in sorted_models]
+values = [x[1] for x in sorted_models]
 
 plt.figure(figsize=(8,5))
-sns.barplot(x=list(accuracies.keys()), y=list(accuracies.values()))
+sns.barplot(x=names, y=values)
 
 plt.title("Model Comparison")
 plt.ylabel("Accuracy")
